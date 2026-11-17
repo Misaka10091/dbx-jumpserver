@@ -1,0 +1,77 @@
+name: Release DBX plugin
+
+on:
+  push:
+    tags:
+      - "v*"
+
+concurrency:
+  group: dbx-plugin-release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  create-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-24.04
+    outputs:
+      tag: ${{ steps.validate.outputs.tag }}
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v7
+
+      - name: Validate tag against plugin Manifest
+        id: validate
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Tag must be a semantic version prefixed with v, for example v0.0.1" >&2
+            exit 1
+          fi
+          version="$(node -p "require('./manifest.json').version")"
+          if [[ "$tag" != "v$version" ]]; then
+            echo "Tag $tag does not match manifest.json version $version" >&2
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Create Release for the pushed tag
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.validate.outputs.tag }}
+          REPOSITORY: ${{ github.repository }}
+          TARGET_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" --repo "$REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; the release job will upload or refresh candidate assets."
+          else
+            gh release create "$TAG" \
+              --repo "$REPOSITORY" \
+              --target "$TARGET_SHA" \
+              --title "$TAG" \
+              --generate-notes
+          fi
+
+  release:
+    name: Build and upload unsigned candidates
+    needs: create-release
+    permissions:
+      contents: write
+    uses: t8y2/dbx/.github/workflows/plugin-release-reusable.yml@plugin-cli-v0.1.10
+    with:
+      release-tag: ${{ needs.create-release.outputs.tag }}
+      package-command: dbx-plugin package .
+      package-path: dist/*.dbxp
+      metadata-path: dist/*.artifact.json
+      node-version: "22"
+      go-version: "1.23.x"
+      rust-toolchain: ""
+      plugin-cli-version: "0.1.10"
+      build-matrix: >-
+        {"include":[{"runner":"ubuntu-24.04","target":"linux-x64"},{"runner":"ubuntu-24.04-arm","target":"linux-arm64"},{"runner":"windows-2022","target":"windows-x64"},{"runner":"macos-15-intel","target":"darwin-x64"},{"runner":"macos-15","target":"darwin-arm64"}]}

@@ -38,6 +38,23 @@ dist/local.dbx.jumpserver-0.0.1-windows-x64.artifact.json
 
 这是官方插件 CLI 生成的**未签名**候选包。正式 DBX 会校验安装包签名，不能直接当作商店已签名插件安装。macOS / Linux 需要在对应平台重新打包。
 
+### 发布 GitHub Release
+
+推送与 `manifest.json` 版本一致的 tag 即会触发 `.github/workflows/plugin-release.yml`：
+
+```bash
+git tag v0.0.1
+git push origin v0.0.1
+```
+
+工作流会先创建 GitHub Release，再调用 DBX 官方 reusable workflow 构建并上传：
+
+- 五个平台的未签名 `.dbxp`：Linux x64/ARM64、Windows x64、macOS Intel/Apple Silicon
+- 每个包对应的 `.artifact.json`
+- 汇总的 `release-candidates.json`
+
+tag 必须是 `v<manifest.version>`，不匹配会直接失败。Release 资产不可覆盖，修改版本或内容时必须发布新的语义版本。
+
 ## 快速开始
 
 1. 在 JumpServer 中创建个人 API Key，记录 **AccessKey ID** 和 **AccessKey Secret**。
@@ -144,6 +161,8 @@ DBX 工作台使用 `sandbox="allow-scripts"`，不放开原生表单提交，�
 │   ├── jumpserver.go
 │   └── *_test.go
 ├── tests/                     # UI 与沙箱回归测试
+├── .github/workflows/
+│   └── plugin-release.yml     # tag 触发的 Release 工作流
 ├── docs/
 │   └── JUMPSERVER_API.md      # JumpServer 接口开发参考
 ├── openapi.json               # JumpServer API 规格
