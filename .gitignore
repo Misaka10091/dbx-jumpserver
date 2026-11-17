@@ -1,0 +1,15 @@
+.env
+.env.*
+!.env.example
+.reference/
+.cache/
+.pnpm-store/
+.dbx-dev/
+node_modules/
+bin/
+dist/
+coverage/
+*.log
+*.db
+*.db-shm
+*.db-wal

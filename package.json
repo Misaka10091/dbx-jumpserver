@@ -1,0 +1,16 @@
+{
+  "name": "dbx-jumpserver",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "dbx-plugin dev --path .",
+    "package": "dbx-plugin package .",
+    "test:ui": "node --test --test-isolation=none tests/ui.test.mjs",
+    "test:browser": "node tests/sandbox.browser.mjs"
+  },
+  "devDependencies": {
+    "@dbx-app/plugin-cli": "0.1.10",
+    "jsdom": "26.1.0"
+  }
+}

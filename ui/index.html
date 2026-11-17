@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>JumpServer 数据库凭证</title><link rel="stylesheet" href="./style.css"></head>
+<body>
+<main>
+  <header><div class="identity"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 2 8 4v6c0 5-5 8-8 10-3-2-8-5-8-10V6l8-4Z"/><path d="m8 12 3 3 5-6"/></svg><div><p class="eyebrow">JUMPSERVER → DBX</p><h1>数据库凭证</h1></div></div><button id="reload" type="button" class="secondary">重新加载</button></header>
+  <p id="service" class="service">正在连接凭证服务…</p>
+  <div id="status" class="status" role="status" aria-live="polite">正在加载…</div>
+  <form id="form">
+    <fieldset id="fields" disabled>
+      <section aria-labelledby="profile-heading">
+        <div class="section-title"><span>1</span><h2 id="profile-heading">选择凭证配置</h2></div>
+        <div class="profile-row">
+          <label>当前配置<select id="profile-select"><option value="">正在加载配置…</option></select></label>
+          <button id="profile-new" type="button" class="secondary" disabled>另存为配置</button>
+          <button id="profile-rename" type="button" class="secondary" disabled>重命名</button>
+          <button id="profile-delete" type="button" class="secondary" disabled>删除</button>
+        </div>
+        <p id="profile-count" class="hint"></p>
+        <p class="hint">一个 JumpServer 可保存多组数据库凭证配置。每个配置独立记住组织、数据库、系统账号和目标 DBX 连接；切换后即可一键刷新，不会保存临时密码。</p>
+      </section>
+      <section aria-labelledby="source-heading">
+        <div class="section-title"><span>2</span><h2 id="source-heading">选择数据库</h2></div>
+        <div class="grid"><label>组织<select id="org" required><option value="">选择实际组织</option></select></label><label>资源类型<select id="kind"><option value="application">应用（我的应用）</option><option value="asset">普通资产</option></select></label></div>
+        <div class="search-row"><label class="grow">搜索资源<input id="search" placeholder="按数据库名称搜索" maxlength="256" type="search"></label><button id="search-button" class="secondary" type="button">搜索</button></div>
+        <label>数据库资源<select id="resource" required><option value="">先选择组织，再加载资源</option></select></label>
+        <label>系统账号<select id="account" required><option value="">先选择数据库资源</option></select></label>
+        <p class="hint">支持 MySQL、MariaDB、PostgreSQL 和 SQL Server。找不到数据库时，请检查组织和“应用 / 资产”类型。</p>
+      </section>
+      <section aria-labelledby="target-heading">
+        <div class="section-title"><span>3</span><h2 id="target-heading">填入 DBX 连接</h2></div>
+        <label>目标连接<select id="target"><option value="">新建数据库连接</option></select></label>
+        <p id="target-hint" class="hint">将打开 DBX 的新建连接表单，填入代理主机、端口和临时凭证。</p>
+        <label>数据库名（可选）<input id="database" placeholder="留空保留现有连接的数据库设置" maxlength="256" autocomplete="off"></label>
+        <label id="update-endpoint-row" class="check" hidden><input id="update-endpoint" type="checkbox">同时更新连接地址（从 JumpServer 自动获取）</label>
+        <p id="lifetime" class="gateway"></p>
+      </section>
+      <footer><div><button id="fill" type="button" class="primary" disabled>刷新并填入 DBX</button><button id="preview" type="button" class="secondary" disabled>获取参数</button></div><p id="action-status" class="status" aria-live="off" hidden></p><p class="hint">每个配置会自动保存当前选择。切换配置后点击一次即可刷新；请先关闭已打开的连接编辑窗口，再填入并保存。</p></footer>
+    </fieldset>
+  </form>
+  <div id="profile-dialog" class="dialog-backdrop" hidden>
+    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="profile-dialog-title">
+      <h2 id="profile-dialog-title">配置</h2>
+      <p id="profile-dialog-copy" class="hint"></p>
+      <label id="profile-name-row">配置名称<input id="profile-name" maxlength="64" autocomplete="off"></label>
+      <p id="profile-dialog-error" class="hint dialog-error" role="alert" hidden></p>
+      <div class="dialog-actions"><button id="profile-dialog-cancel" type="button" class="secondary">取消</button><button id="profile-dialog-confirm" type="button" class="primary">保存</button></div>
+    </div>
+  </div>
+  <section id="preview-panel" hidden aria-labelledby="preview-heading"><h2 id="preview-heading">本次连接参数</h2><p class="hint">Web / Docker 可在此复制参数；自动填入需要插件和 DBX 桌面版运行在同一台电脑。</p><div id="preview-values"></div><p id="expiry" class="hint"></p><button id="clear-preview" type="button" class="secondary">清除显示</button></section>
+  <p class="footnote">令牌有效期内可连接。过期后重新刷新凭证，并在 DBX 中重新连接数据库。</p>
+</main>
+<script src="./app.js"></script>
+</body></html>

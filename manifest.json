@@ -1,0 +1,37 @@
+{
+  "$schema": "https://raw.githubusercontent.com/t8y2/dbx/main/plugins/manifest.schema.json",
+  "manifest_version": 1,
+  "id": "local.dbx.jumpserver",
+  "name": "JumpServer",
+  "version": "0.0.1",
+  "publisher": "dbx-jumpserver",
+  "description": "获取 JumpServer 临时连接凭证，一键填入 DBX 数据库连接表单。",
+  "icon": "assets/plugin.svg",
+  "engines": { "host_api": "1" },
+  "permissions": ["host.storage", "host.connections:read"],
+  "entrypoints": {
+    "backend": { "executable": "bin/dbx-jumpserver", "transport": "stdio-jsonl", "protocol_versions": [1] },
+    "ui": { "root": "ui", "entry": "ui/index.html" }
+  },
+  "contributions": [
+    {
+      "type": "connection-provider",
+      "id": "local.dbx.jumpserver.connection",
+      "label": "JumpServer 凭证服务",
+      "icon": "assets/plugin.svg",
+      "database_type": "jumpserver",
+      "description": "先保存并连接凭证服务，再在工作台选择数据库。AccessKey 保存在 DBX Secret Store。",
+      "fields": [
+        { "key": "name", "label": "连接名称", "type": "text", "binding": "name", "default": "JumpServer", "required": true },
+        { "key": "endpoint", "label": "JumpServer 地址", "type": "text", "binding": "host", "placeholder": "https://jumpserver.example.com", "required": true },
+        { "key": "access_key", "label": "AccessKey ID", "type": "password", "binding": "secret", "required": true },
+        { "key": "secret_key", "label": "AccessKey Secret", "type": "password", "binding": "secret", "required": true },
+        { "key": "org_id", "label": "初始组织 ID（可选）", "type": "text", "binding": "config", "description": "留空时用所有组织验证，进入工作台后选择实际组织。" },
+        { "key": "expire_minutes", "label": "令牌有效期（分钟）", "type": "number", "binding": "config", "default": 60 }
+      ],
+      "capabilities": ["test", "connect", "disconnect"],
+      "workbench": "local.dbx.jumpserver.workbench"
+    },
+    { "type": "workbench", "id": "local.dbx.jumpserver.workbench", "label": "JumpServer 数据库凭证", "icon": "assets/plugin.svg" }
+  ]
+}
