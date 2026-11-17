@@ -1,9 +1,9 @@
 {
   "$schema": "https://raw.githubusercontent.com/t8y2/dbx/main/plugins/manifest.schema.json",
   "manifest_version": 1,
-  "id": "local.dbx.jumpserver",
+  "id": "io.github.misaka10091.jumpserver",
   "name": "JumpServer",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "publisher": "dbx-jumpserver",
   "description": "获取 JumpServer 临时连接凭证，一键填入 DBX 数据库连接表单。",
   "icon": "assets/plugin.svg",
@@ -16,7 +16,7 @@
   "contributions": [
     {
       "type": "connection-provider",
-      "id": "local.dbx.jumpserver.connection",
+      "id": "io.github.misaka10091.jumpserver.connection",
       "label": "JumpServer 凭证服务",
       "icon": "assets/plugin.svg",
       "database_type": "jumpserver",
@@ -30,8 +30,8 @@
         { "key": "expire_minutes", "label": "令牌有效期（分钟）", "type": "number", "binding": "config", "default": 60 }
       ],
       "capabilities": ["test", "connect", "disconnect"],
-      "workbench": "local.dbx.jumpserver.workbench"
+      "workbench": "io.github.misaka10091.jumpserver.workbench"
     },
-    { "type": "workbench", "id": "local.dbx.jumpserver.workbench", "label": "JumpServer 数据库凭证", "icon": "assets/plugin.svg" }
+    { "type": "workbench", "id": "io.github.misaka10091.jumpserver.workbench", "label": "JumpServer 数据库凭证", "icon": "assets/plugin.svg" }
   ]
 }

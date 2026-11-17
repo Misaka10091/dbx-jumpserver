@@ -2,7 +2,7 @@
 
 在 DBX 中获取 JumpServer 数据库临时凭证，并填入 DBX 数据库连接表单的插件。适合经常需要在多个 JumpServer 数据库之间切换、又不想反复复制临时用户名和密码的场景。
 
-> **状态：`0.0.1` 预发布候选版，尚未发布到 DBX 商店。** 当前产物是未签名候选包，正式安装需要经过 DBX Store 或私有插件仓库的签名流程。
+> **状态：`0.1.0` 候选版，尚未发布到 DBX 商店。** 当前产物是未签名候选包，正式安装需要经过 DBX Store 或私有插件仓库的签名流程。
 
 ## 功能
 
@@ -32,8 +32,8 @@ pnpm run package
 当前生成的 Windows x64 候选包：
 
 ```text
-dist/local.dbx.jumpserver-0.0.1-windows-x64.dbxp
-dist/local.dbx.jumpserver-0.0.1-windows-x64.artifact.json
+dist/io.github.misaka10091.jumpserver-0.1.0-windows-x64.dbxp
+dist/io.github.misaka10091.jumpserver-0.1.0-windows-x64.artifact.json
 ```
 
 这是官方插件 CLI 生成的**未签名**候选包。正式 DBX 会校验安装包签名，不能直接当作商店已签名插件安装。macOS / Linux 需要在对应平台重新打包。
@@ -43,8 +43,8 @@ dist/local.dbx.jumpserver-0.0.1-windows-x64.artifact.json
 推送与 `manifest.json` 版本一致的 tag 即会触发 `.github/workflows/plugin-release.yml`：
 
 ```bash
-git tag v0.0.1
-git push origin v0.0.1
+git tag v0.1.0
+git push origin v0.1.0
 ```
 
 工作流会先创建 GitHub Release，再调用 DBX 官方 reusable workflow 构建并上传：
@@ -144,7 +144,7 @@ DBX 工作台使用 `sandbox="allow-scripts"`，不放开原生表单提交，�
 | 令牌生成但数据库登录失败 | 核对自动发现的代理地址、协议、令牌有效期和部署的数据库代理认证方式。用户名应为令牌原始 `id`，密码为对应 `secret`。 |
 | 提示数据库类型不匹配 | 目标 DBX 连接的数据库类型必须与 JumpServer 系统账号协议一致。 |
 | 更新连接被 DBX 拒绝 | 检查 DBX 版本是否支持现有连接深链更新，以及目标是否为内置字段模式连接。 |
-| 点击按钮无反应 | 使用当前 0.0.x 版本并重新打开工作台。旧版依赖原生表单提交，会被 DBX 沙箱拦截。 |
+| 点击按钮无反应 | 使用当前 0.1.x 版本并重新打开工作台。旧版依赖原生表单提交，会被 DBX 沙箱拦截。 |
 
 ## 项目结构
 

@@ -12,8 +12,8 @@ import (
 	"time"
 )
 
-const pluginID = "local.dbx.jumpserver"
-const version = "0.0.1"
+const pluginID = "io.github.misaka10091.jumpserver"
+const version = "0.1.0"
 
 type session struct {
 	client        *jmsClient
