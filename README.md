@@ -187,3 +187,7 @@ pnpm run package      # 构建当前平台的未签名候选包
 - [JumpServer API 接入参考](docs/JUMPSERVER_API.md)
 - [JumpServer OpenAPI 规格](openapi.json)
 - [DBX 插件开发文档](https://dbxio.com/cn/docs/plugin-development)
+
+## License
+
+[Apache-2.0](LICENSE)
