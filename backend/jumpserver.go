@@ -28,13 +28,30 @@ var safeID = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,128}$`)
 type object = map[string]any
 
 type jmsClient struct {
-	base   *url.URL
-	ak, sk string
-	http   *http.Client
-	now    func() time.Time
+	base          *url.URL
+	ak, sk        string
+	http          *http.Client
+	now           func() time.Time
+	inlineCaptcha bool
+}
+
+type httpStatusError struct {
+	status int
+	hint   string
+}
+
+func (e *httpStatusError) Error() string {
+	return fmt.Sprintf("JumpServer HTTP %d：%s", e.status, e.hint)
 }
 
 func newClient(endpoint, ak, sk string) (*jmsClient, error) {
+	if strings.TrimSpace(ak) == "" || sk == "" || strings.ContainsAny(ak, "\r\n\"") {
+		return nil, errors.New("请填写 AccessKey ID 和 Secret")
+	}
+	return newClientWithAuth(endpoint, ak, sk)
+}
+
+func newClientWithAuth(endpoint, ak, sk string) (*jmsClient, error) {
 	u, err := url.Parse(strings.TrimSpace(endpoint))
 	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
 		return nil, errors.New("JumpServer 地址无效，请填写 HTTPS 地址")
@@ -51,9 +68,6 @@ func newClient(endpoint, ak, sk string) (*jmsClient, error) {
 		path = strings.TrimSuffix(path, "/api")
 	}
 	u.Path, u.RawPath = path+"/api/v1", ""
-	if strings.TrimSpace(ak) == "" || sk == "" || strings.ContainsAny(ak, "\r\n\"") {
-		return nil, errors.New("请填写 AccessKey ID 和 Secret")
-	}
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.MaxConnsPerHost = 4
 	return &jmsClient{base: u, ak: ak, sk: sk, now: time.Now, http: &http.Client{
@@ -97,7 +111,24 @@ func (c *jmsClient) request(ctx context.Context, method, path, org string, query
 	if err != nil {
 		return nil, errors.New("无法创建 JumpServer 请求")
 	}
-	signHeaders(req, c.ak, c.sk, org, c.now())
+	if c.http.Jar == nil {
+		signHeaders(req, c.ak, c.sk, org, c.now())
+	} else {
+		req.Header.Set("Accept", "application/json")
+		if org == "" {
+			org = allOrgs
+		}
+		req.Header.Set("X-JMS-ORG", org)
+		if method != http.MethodGet {
+			for _, cookie := range c.http.Jar.Cookies(req.URL) {
+				if strings.HasSuffix(cookie.Name, "csrftoken") {
+					req.Header.Set("X-CSRFToken", cookie.Value)
+					break
+				}
+			}
+			req.Header.Set("Origin", c.base.Scheme+"://"+c.base.Host)
+		}
+	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
@@ -118,7 +149,7 @@ func (c *jmsClient) request(ctx context.Context, method, path, org string, query
 		case 429:
 			hint = "请求过于频繁，请稍后重试"
 		}
-		return nil, fmt.Errorf("JumpServer HTTP %d：%s", resp.StatusCode, hint)
+		return nil, &httpStatusError{resp.StatusCode, hint}
 	}
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxBody+1))
 	if err != nil || len(raw) > maxBody {
