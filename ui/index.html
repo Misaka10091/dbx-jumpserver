@@ -1,10 +1,67 @@
 <!doctype html>
 <html lang="zh-CN">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>JumpServer 数据库凭证</title><link rel="stylesheet" href="./style.css"></head>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>JumpServer</title><link rel="stylesheet" href="./vendor/xterm.css"><link rel="stylesheet" href="./style.css"></head>
 <body>
 <main>
-  <header><div class="identity"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 2 8 4v6c0 5-5 8-8 10-3-2-8-5-8-10V6l8-4Z"/><path d="m8 12 3 3 5-6"/></svg><div><p class="eyebrow">JUMPSERVER → DBX</p><h1>数据库凭证</h1></div></div><button id="reload" type="button" class="secondary">重新加载</button></header>
+  <header><div class="identity"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 2 8 4v6c0 5-5 8-8 10-3-2-8-5-8-10V6l8-4Z"/><path d="m8 12 3 3 5-6"/></svg><h1>JumpServer</h1></div><button id="reload" type="button" class="secondary">重新加载</button></header>
   <p id="service" class="service">正在连接凭证服务…</p>
+  <nav class="workbench-switch" aria-label="JumpServer 工作台">
+    <button id="show-database" type="button" class="secondary" aria-pressed="true">数据库凭证</button>
+    <button id="show-ssh" type="button" class="secondary" aria-pressed="false">SSH 终端</button>
+  </nav>
+  <section id="ssh-panel" hidden aria-label="SSH 终端">
+    <fieldset id="ssh-fields">
+      <div class="grid">
+        <label>SSH 组织<select id="ssh-org"></select></label>
+        <label>SSH 资产<select id="ssh-asset"></select></label>
+        <label>SSH 账号<select id="ssh-account"></select></label>
+      </div>
+      <div class="search-row"><label class="grow">搜索 SSH 资产<input id="ssh-search" type="search" maxlength="256" placeholder="按资产名称或地址搜索"></label><button id="ssh-find" type="button" class="secondary">搜索</button></div>
+    </fieldset>
+    <div class="ssh-tabs" role="tablist" aria-label="SSH 工作区">
+      <button id="ssh-tab-terminal" type="button" role="tab" aria-controls="ssh-terminal-panel" aria-selected="true">终端</button>
+      <button id="ssh-tab-files" type="button" role="tab" aria-controls="ssh-files-panel" aria-selected="false" tabindex="-1">文件管理</button>
+    </div>
+    <div id="ssh-terminal-panel" role="tabpanel" aria-labelledby="ssh-tab-terminal">
+      <div class="ssh-terminal-actions">
+        <button id="ssh-open" type="button" class="primary" disabled>打开 SSH 终端</button>
+        <button id="ssh-close" type="button" class="secondary" disabled>断开 SSH</button>
+        <p id="ssh-status" class="ssh-feedback" role="status" aria-live="polite"></p>
+      </div>
+      <div id="ssh-terminal" aria-label="SSH 终端内容" hidden></div>
+    </div>
+    <div id="ssh-files-panel" role="tabpanel" aria-labelledby="ssh-tab-files" hidden>
+      <div class="ssh-file-toolbar">
+        <button id="ssh-file-up" type="button" class="secondary">上一级</button>
+        <input id="ssh-file-path" aria-label="SFTP 路径" value="/" maxlength="2048">
+        <button id="ssh-file-go" type="button" class="secondary">打开</button>
+        <button id="ssh-file-refresh" type="button" class="secondary">刷新</button>
+        <button id="ssh-file-upload" type="button" class="secondary">上传</button>
+        <button id="ssh-file-download" type="button" class="primary">下载</button>
+        <button id="ssh-file-delete" type="button" class="secondary ssh-file-delete">删除</button>
+      </div>
+      <div class="ssh-file-summary">
+        <p id="ssh-file-status" class="ssh-feedback" role="status" aria-live="polite"></p>
+        <span id="ssh-file-selection" class="ssh-file-selection"></span>
+        <input id="ssh-file-filter" type="search" aria-label="搜索当前目录" placeholder="搜索当前目录">
+      </div>
+      <progress id="ssh-file-progress" aria-label="文件传输进度" hidden></progress>
+      <div class="ssh-file-scroll">
+        <table><thead><tr><th scope="col" class="ssh-file-check"><input id="ssh-file-select-all" type="checkbox" aria-label="全选当前列表"></th><th scope="col">名称</th><th scope="col">大小</th><th scope="col">修改时间</th></tr></thead>
+        <tbody id="ssh-file-list"></tbody></table>
+      </div>
+      <dialog id="ssh-file-delete-dialog" class="dialog ssh-delete-dialog" aria-labelledby="ssh-file-delete-title">
+        <h2 id="ssh-file-delete-title">删除远程项目</h2>
+        <p id="ssh-file-delete-copy"></p>
+        <ul id="ssh-file-delete-list"></ul>
+        <div class="dialog-actions">
+          <button id="ssh-file-delete-cancel" type="button" class="secondary" autofocus>取消</button>
+          <button id="ssh-file-delete-confirm" type="button" class="primary destructive">确认删除</button>
+        </div>
+      </dialog>
+    </div>
+  </section>
+  <div id="database-panel">
   <div id="status" class="status" role="status" aria-live="polite">正在加载…</div>
   <form id="form">
     <fieldset id="fields" disabled>
@@ -49,6 +106,10 @@
   </div>
   <section id="preview-panel" hidden aria-labelledby="preview-heading"><h2 id="preview-heading">本次连接参数</h2><p class="hint">Web / Docker 可在此复制参数；自动填入需要插件和 DBX 桌面版运行在同一台电脑。</p><div id="preview-values"></div><p id="expiry" class="hint"></p><button id="clear-preview" type="button" class="secondary">清除显示</button></section>
   <p class="footnote">令牌有效期内可连接。过期后重新刷新凭证，并在 DBX 中重新连接数据库。</p>
+  </div>
 </main>
 <script src="./app.js"></script>
+<script src="./vendor/xterm.js"></script>
+<script src="./files.js"></script>
+<script src="./ssh.js"></script>
 </body></html>

@@ -276,3 +276,106 @@ test('context changes invalidate the loaded service and disable fill', async (t)
   ui.bridge.context = { connectionId: 'service-2' }; ui.bridge.contextHandler();
   assert.equal(ui.$('fill').disabled, true); assert.match(ui.$('status').textContent, /上下文已更改/);
 });
+
+test('switches terminal and file tabs and uses DBX file dialogs for both transfers', async (t) => {
+  const dom = new JSDOM(html, { runScripts: 'outside-only' });
+  t.after(() => dom.window.close());
+  const calls = [];
+  const saves = [];
+  const $ = (id) => dom.window.document.getElementById(id);
+  $('ssh-file-delete-dialog').showModal = function () { this.open = true; };
+  $('ssh-file-delete-dialog').close = function () { this.open = false; this.dispatchEvent(new dom.window.Event('close')); };
+  dom.window.Terminal = function () {};
+  dom.window.dbxPlugin = {
+    ready: Promise.resolve(), context: { connectionId: 'connection' },
+    capabilities: { fileTransfer: { pick: true, read: true, beginSave: true } },
+    fileTransfer: {
+      async pick({ multiple }) {
+        assert.equal(multiple, true);
+        return { files: [{ handleId: 'local-in', name: 'upload.bin', size: 2 }, { handleId: 'local-in-2', name: 'upload2.bin', size: 2 }] };
+      },
+      async read(handle, offset, maximum) {
+        assert.ok(['local-in', 'local-in-2'].includes(handle));
+        assert.deepEqual([offset, maximum], [0, 512 * 1024]);
+        return { dataBase64: 'YWI=' };
+      },
+      async beginSave({ name, size }) {
+        assert.equal(size, 4);
+        saves.push(name);
+        return { handleId: 'local-out' };
+      },
+      async write(handle, offset, data) {
+        assert.deepEqual([handle, offset, data], ['local-out', 0, 'dGVzdA==']);
+        return { nextOffset: 4 };
+      },
+      async finish(handle) { assert.equal(handle, 'local-out'); },
+      async cancel(handle) { assert.ok(['local-in', 'local-in-2'].includes(handle)); },
+    },
+    async invoke(method, params) {
+      calls.push({ method, params });
+      switch (method) {
+        case 'jumpserver/profile': return { organizations: [{ id: 'org' }] };
+        case 'jumpserver/ssh/assets': return { items: [{ id: 'asset' }] };
+        case 'jumpserver/ssh/accounts': return { items: [{ id: 'account' }] };
+        case 'jumpserver/ssh/files/list':
+          return { sftpRoot: '/tmp', resolvedPath: '/tmp', items: [{ name: 'fixture.jar', size: '4', is_dir: false }, { name: 'other.jar', size: '4', is_dir: false }, { name: 'tmp-folder', is_dir: true }] };
+        case 'jumpserver/ssh/files/prepare-download':
+          assert.ok(['/tmp/fixture.jar', '/tmp/other.jar'].includes(params.remotePath));
+          return { transferId: 'download', size: 4 };
+        case 'jumpserver/ssh/files/read-download':
+          return { data: 'dGVzdA==', nextOffset: 4 };
+        case 'jumpserver/ssh/files/prepare-upload':
+          assert.ok(['/tmp/upload.bin', '/tmp/upload2.bin'].includes(params.remotePath));
+          return { transferId: 'upload', size: 2 };
+        case 'jumpserver/ssh/files/write-upload':
+          assert.equal(params.data, 'YWI=');
+          return { nextOffset: 2 };
+        case 'jumpserver/ssh/files/delete':
+          assert.equal(params.remotePath, '/tmp');
+          assert.equal(params.entries.length, 3);
+          assert.ok(params.entries.some((entry) => entry.name === 'tmp-folder' && entry.isDir));
+          return { items: [{ name: 'fixture.jar' }, { name: 'other.jar', error: '权限不足' }, { name: 'tmp-folder' }] };
+        case 'jumpserver/ssh/files/close-transfer':
+        case 'jumpserver/ssh/files/commit-upload':
+          return {};
+        default: throw new Error(method);
+      }
+    },
+  };
+  for (const path of ['files.js', 'ssh.js']) {
+    dom.window.eval(await readFile(new URL('../ui/' + path, import.meta.url), 'utf8'));
+  }
+  $('show-ssh').click();
+  await waitFor(() => !$('ssh-open').disabled);
+  $('ssh-tab-files').click();
+  await waitFor(() => $('ssh-file-list').rows.length === 3 && !$('ssh-file-upload').disabled);
+  assert.equal($('ssh-terminal-panel').hidden, true);
+  assert.equal($('ssh-file-path').value, '/tmp');
+  assert.equal($('ssh-file-up').disabled, true);
+  $('ssh-file-filter').value = '.jar';
+  $('ssh-file-filter').dispatchEvent(new dom.window.Event('input'));
+  $('ssh-file-select-all').click();
+  assert.equal($('ssh-file-selection').textContent, '已选 2 项');
+  $('ssh-file-download').click();
+  await waitFor(() => $('ssh-file-status').textContent.includes('下载完成 2 项') && !$('ssh-file-upload').disabled);
+  $('ssh-file-upload').click();
+  await waitFor(() => $('ssh-file-status').textContent.includes('上传完成 2 项') && !$('ssh-file-upload').disabled);
+  assert.deepEqual(saves, ['fixture.jar', 'other.jar']);
+  $('ssh-file-select-all').click();
+  assert.equal($('ssh-file-download').disabled, true);
+  $('ssh-file-delete').click();
+  assert.match($('ssh-file-delete-copy').textContent, /文件夹及其内容/);
+  $('ssh-file-delete-cancel').click();
+  assert.ok(calls.every((call) => !call.method.endsWith('/delete')));
+  $('ssh-file-delete').click();
+  $('ssh-file-delete-confirm').click();
+  await waitFor(() => $('ssh-file-status').textContent.includes('删除完成 2 项，失败 1 项'));
+  $('ssh-file-path').value = '/data';
+  $('ssh-file-go').click();
+  await waitFor(() => $('ssh-file-status').textContent.includes('超出'));
+  assert.ok(calls.every((call) => call.params?.remotePath !== '/data'));
+  $('ssh-tab-terminal').click();
+  assert.equal($('ssh-files-panel').hidden, true);
+  assert.equal($('ssh-terminal-panel').hidden, false);
+  assert.ok(calls.every((call) => !call.method.endsWith('/close')));
+});

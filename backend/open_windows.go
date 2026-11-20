@@ -14,6 +14,10 @@ func openDBX(link string) error {
 	if !strings.HasPrefix(link, "dbx://connection/new?") {
 		return errors.New("invalid DBX URL")
 	}
+	return openLocal(link)
+}
+
+func openLocal(link string) error {
 	verb, err := syscall.UTF16PtrFromString("open")
 	if err != nil {
 		return err
@@ -27,7 +31,7 @@ func openDBX(link string) error {
 	runtime.KeepAlive(verb)
 	runtime.KeepAlive(target)
 	if result <= 32 {
-		return errors.New("DBX protocol handler unavailable")
+		return errors.New("local URL handler unavailable")
 	}
 	return nil
 }

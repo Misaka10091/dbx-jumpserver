@@ -1,8 +1,24 @@
 # DBX JumpServer 插件
 
-在 DBX 中获取 JumpServer 数据库临时凭证，并填入 DBX 数据库连接表单的插件。适合经常需要在多个 JumpServer 数据库之间切换、又不想反复复制临时用户名和密码的场景。
+在 DBX 中通过 JumpServer 打开 SSH 终端、使用 MCP 进行巡检、运行命令和传输文件，以及获取并填入数据库临时凭证。
 
-> **状态：`0.1.0` 候选版，尚未发布到 DBX 商店。** 当前产物是未签名候选包，正式安装需要经过 DBX Store 或私有插件仓库的签名流程。
+本地开发包使用 `0.2.x` 版本，由 DBX 插件中心从文件安装。
+
+## SSH 终端与 MCP
+
+在连接编辑页选择 **AccessKey ID / Secret** 或 **账号密码（SSH）**。旧连接默认继续使用 AccessKey。登录密码和 AccessKey 由 DBX Secret Store 管理。
+
+1. 保存并连接 JumpServer。图形验证码显示在输入框上方。支持 `host.requestUserInput.image` 的 DBX 直接使用客户端弹窗。官方 macOS 或 Windows 客户端缺少该接口时，插件会打开自己的系统输入弹窗。验证码图片只通过内存传递，弹窗关闭后释放，不创建本地图片文件。需要动态验证码时，在 DBX 输入本次动态码。
+2. 打开工作台的 **SSH 终端**，选择组织、资产和授权账号。在 **终端** 和 **文件管理** 标签之间切换。用列表复选框选择项目，可批量下载文件或确认删除。下载逐个选择保存位置，上传可在 DBX 文件选择框里一次选择多个本机文件。文件管理显示 JumpServer 授权的 SFTP 根目录。
+3. 需要外部 MCP 时，在对应连接的编辑页启用 **允许 MCP 只读巡检** 或 **允许 SSH 和 SFTP 的 MCP 工具**，再到 DBX **设置 → MCP → 能力**给 JumpServer 授予所需工具和访问级别。使用账号密码或网页终端模式时，先在桌面端完成登录并保持 DBX 打开，以便外部 MCP 复用该会话。
+
+`ssh_list_organizations`、`ssh_list_assets` 和 `ssh_list_accounts` 返回授权范围内的对象。`ssh_inspect` 接收组织、资产和账号，支持 `hostname`、`whoami`、`uptime`、`uname -sr` 和 `df -h`。工作台和 MCP 都通过 KoKo 代理访问目标，继续使用 JumpServer 的资产、账号、登录和命令策略。
+
+账号密码方式使用 KoKo Web 终端。AccessKey 默认使用 JumpServer 为选定资产公布的 KoKo 原生 SSH 网关，要求客户端能访问该端口，首次连接需核对主机密钥指纹。内网或 VPN 部署可以填写管理员提供的备用 SSH 主机、端口和指纹。如果网关端口无法完成 SSH 握手，在连接设置中启用 **AccessKey 模式使用网页终端**，同时填写同一个 JumpServer 用户的网页账号密码。此模式用 AccessKey 签名读取 API，SSH 和 SFTP 通过登录后的 KoKo 网页会话运行。
+
+SSH 和 SFTP 模式提供与 DBX SSH 插件同名的 16 项工具。运行命令需要完全访问权限，文件写入、下载到本机、关闭终端和删除已知主机指纹需要写入权限。`ssh_terminal_input` 和 `ssh_close` 作用于同一资产和账号已打开的 DBX 终端。`ssh_exec_sudo` 依赖目标支持非交互式 `sudo -n`。后台任务由插件进程管理，最长 120 秒。SFTP 上传和下载使用插件数据目录下的 `transfers/`。单文件上传上限 8 MiB，下载上限 512 MiB。SFTP 目录和传输权限由 JumpServer 的资产平台与账号策略决定。下载流式写入磁盘，完成后保存为目标文件名，禁止覆盖本机同名文件。
+
+需要交互验证时，请在 DBX 桌面端先建立账号密码会话。SSO、网页登录审批和额外人工挑战仍按 JumpServer 的登录要求完成。
 
 ## 功能
 
@@ -21,7 +37,7 @@ pnpm install
 pnpm dev
 ```
 
-需要 Node.js 22+ 和 pnpm。Go 后端需要 Go 1.23+，只使用标准库。
+需要 Node.js 22+、pnpm 和 Go 1.26+。构建步骤会将 xterm.js 和许可文件打入插件包。
 
 ### 构建候选包
 
@@ -29,14 +45,14 @@ pnpm dev
 pnpm run package
 ```
 
-当前生成的 Windows x64 候选包：
+当前平台生成的候选包，例如 Apple Silicon：
 
 ```text
-dist/io.github.misaka10091.jumpserver-0.1.0-windows-x64.dbxp
-dist/io.github.misaka10091.jumpserver-0.1.0-windows-x64.artifact.json
+dist/io.github.misaka10091.jumpserver-0.2.11-darwin-arm64.dbxp
+dist/io.github.misaka10091.jumpserver-0.2.11-darwin-arm64.artifact.json
 ```
 
-这是官方插件 CLI 生成的**未签名**候选包。正式 DBX 会校验安装包签名，不能直接当作商店已签名插件安装。macOS / Linux 需要在对应平台重新打包。
+这是官方插件 CLI 生成的**未签名**候选包。为自己构建的包可通过 DBX **插件中心 → 设置 → 安装 .dbxp** 安装，需使用对应系统和架构的构建产物。
 
 ### 发布 GitHub Release
 
@@ -119,11 +135,11 @@ DBX 工作台使用 `sandbox="allow-scripts"`，不放开原生表单提交，�
 - 当前适配 JumpServer v2 兼容接口的 `system_user` / `application` / `asset` 模型；仅提供 `account` 模型的新版本需要单独适配。
 - 自动填入要求 Sidecar 与 DBX 桌面版运行在同一台电脑。Web / Docker 部署请使用 **获取参数** 后手动复制。
 - 深链更新支持 DBX 内置 MySQL、PostgreSQL 和 SQL Server 的字段模式连接；特殊驱动或连接字符串模式可能被 DBX 拒绝。
-- 尚未使用真实 JumpServer 凭据做完整端到端验证，也未在已签名安装的 DBX 客户端中完成最终验证。
+- 安装包为本地构建版本。数据库凭证流程的兼容条件仍以对应 JumpServer 版本为准。
 
 ## 安全说明
 
-- AccessKey ID / Secret 由 DBX Secret Store 管理，Sidecar 仅在连接期间保留必要凭据。
+- AccessKey ID、Secret 和登录密码由 DBX Secret Store 管理。账号密码模式在插件进程内保留网页会话，动态验证码不保存。
 - 工作台配置存储只包含配置名称、组织/资源/账号/目标 ID、数据库名和更新地址开关；不保存密码或令牌。
 - JumpServer API 使用 HTTPS 证书校验，HTTP 跳转不会携带签名凭据继续请求。
 - “刷新并填入 DBX”生成的链接包含临时用户名和密码，不要转发或截图分享。

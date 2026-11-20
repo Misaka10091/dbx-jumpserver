@@ -13,6 +13,10 @@ func openDBX(link string) error {
 	if !strings.HasPrefix(link, "dbx://connection/new?") {
 		return errors.New("invalid DBX URL")
 	}
+	return openLocal(link)
+}
+
+func openLocal(link string) error {
 	command := "xdg-open"
 	if runtime.GOOS == "darwin" {
 		command = "open"

@@ -3,15 +3,29 @@
   "manifest_version": 1,
   "id": "io.github.misaka10091.jumpserver",
   "name": "JumpServer",
-  "version": "0.1.0",
+  "version": "0.2.11",
   "publisher": "dbx-jumpserver",
-  "description": "获取 JumpServer 临时连接凭证，一键填入 DBX 数据库连接表单。",
+  "description": "使用 JumpServer 登录 SSH 资产、运行 MCP 巡检并获取数据库临时凭证。",
   "icon": "assets/plugin.svg",
-  "engines": { "host_api": "1" },
-  "permissions": ["host.storage", "host.connections:read"],
+  "engines": {
+    "host_api": "1"
+  },
+  "permissions": [
+    "host.storage",
+    "host.connections:read"
+  ],
   "entrypoints": {
-    "backend": { "executable": "bin/dbx-jumpserver", "transport": "stdio-jsonl", "protocol_versions": [1] },
-    "ui": { "root": "ui", "entry": "ui/index.html" }
+    "backend": {
+      "executable": "bin/dbx-jumpserver",
+      "transport": "stdio-jsonl",
+      "protocol_versions": [
+        1
+      ]
+    },
+    "ui": {
+      "root": "ui",
+      "entry": "ui/index.html"
+    }
   },
   "contributions": [
     {
@@ -20,18 +34,385 @@
       "label": "JumpServer 凭证服务",
       "icon": "assets/plugin.svg",
       "database_type": "jumpserver",
-      "description": "先保存并连接凭证服务，再在工作台选择数据库。AccessKey 保存在 DBX Secret Store。",
+      "description": "可用 AccessKey 或账号密码连接 JumpServer。登录密码和 AccessKey 由 DBX Secret Store 管理。",
       "fields": [
-        { "key": "name", "label": "连接名称", "type": "text", "binding": "name", "default": "JumpServer", "required": true },
-        { "key": "endpoint", "label": "JumpServer 地址", "type": "text", "binding": "host", "placeholder": "https://jumpserver.example.com", "required": true },
-        { "key": "access_key", "label": "AccessKey ID", "type": "password", "binding": "secret", "required": true },
-        { "key": "secret_key", "label": "AccessKey Secret", "type": "password", "binding": "secret", "required": true },
-        { "key": "org_id", "label": "初始组织 ID（可选）", "type": "text", "binding": "config", "description": "留空时用所有组织验证，进入工作台后选择实际组织。" },
-        { "key": "expire_minutes", "label": "令牌有效期（分钟）", "type": "number", "binding": "config", "default": 60 }
+        {
+          "key": "name",
+          "label": "连接名称",
+          "type": "text",
+          "binding": "name",
+          "default": "JumpServer",
+          "required": true
+        },
+        {
+          "key": "endpoint",
+          "label": "JumpServer 地址",
+          "type": "text",
+          "binding": "host",
+          "placeholder": "https://jumpserver.example.com",
+          "required": true
+        },
+        {
+          "key": "auth_method",
+          "label": "认证方式",
+          "type": "select",
+          "binding": "config",
+          "default": "access_key",
+          "options": [
+            {
+              "label": "AccessKey ID / Secret",
+              "value": "access_key"
+            },
+            {
+              "label": "账号密码（SSH）",
+              "value": "password"
+            }
+          ]
+        },
+        {
+          "key": "login_username",
+          "label": "JumpServer 登录账号",
+          "type": "text",
+          "binding": "username",
+          "visible_when": {
+            "field": "auth_method",
+            "one_of": [
+              "password"
+            ]
+          },
+          "required_when": {
+            "field": "auth_method",
+            "one_of": [
+              "password"
+            ]
+          }
+        },
+        {
+          "key": "login_password",
+          "label": "JumpServer 登录密码",
+          "type": "password",
+          "binding": "secret",
+          "visible_when": {
+            "field": "auth_method",
+            "one_of": [
+              "password"
+            ]
+          },
+          "required_when": {
+            "field": "auth_method",
+            "one_of": [
+              "password"
+            ]
+          }
+        },
+        {
+          "key": "access_key",
+          "label": "AccessKey ID",
+          "type": "password",
+          "binding": "secret",
+          "visible_when": {
+            "not": {
+              "field": "auth_method",
+              "one_of": [
+                "password"
+              ]
+            }
+          },
+          "required_when": {
+            "not": {
+              "field": "auth_method",
+              "one_of": [
+                "password"
+              ]
+            }
+          }
+        },
+        {
+          "key": "secret_key",
+          "label": "AccessKey Secret",
+          "type": "password",
+          "binding": "secret",
+          "visible_when": {
+            "not": {
+              "field": "auth_method",
+              "one_of": [
+                "password"
+              ]
+            }
+          },
+          "required_when": {
+            "not": {
+              "field": "auth_method",
+              "one_of": [
+                "password"
+              ]
+            }
+          }
+        },
+        {
+          "key": "org_id",
+          "label": "初始组织 ID（可选）",
+          "type": "text",
+          "binding": "config",
+          "description": "留空时用所有组织验证，进入工作台后选择实际组织。"
+        },
+        {
+          "key": "expire_minutes",
+          "label": "令牌有效期（分钟）",
+          "type": "number",
+          "binding": "config",
+          "default": 60
+        },
+        {
+          "key": "mcp_read",
+          "label": "允许 MCP 只读巡检",
+          "type": "boolean",
+          "binding": "config",
+          "default": false,
+          "description": "为所选 JumpServer 连接开放资产和账号查询及固定只读巡检。还需在 DBX 的 MCP 能力页授权插件。"
+        },
+        {
+          "key": "ssh_gateway_host",
+          "label": "KoKo SSH 网关主机（可选）",
+          "type": "text",
+          "binding": "config",
+          "visible_when": {
+            "not": {
+              "field": "auth_method",
+              "one_of": [
+                "password"
+              ]
+            }
+          },
+          "description": "留空使用 JumpServer 公布的 SSH 网关。需要走企业内网或 VPN 时可填写管理员提供的 SSH 网关地址。"
+        },
+        {
+          "key": "ssh_gateway_port",
+          "label": "KoKo SSH 网关端口（可选）",
+          "type": "number",
+          "binding": "config",
+          "visible_when": {
+            "not": {
+              "field": "auth_method",
+              "one_of": [
+                "password"
+              ]
+            }
+          },
+          "description": "留空使用 JumpServer 公布的原生 SSH 端口。"
+        },
+        {
+          "key": "ssh_host_fingerprint",
+          "label": "KoKo SSH 指纹（可选）",
+          "type": "text",
+          "binding": "config",
+          "visible_when": {
+            "not": {
+              "field": "auth_method",
+              "one_of": [
+                "password"
+              ]
+            }
+          },
+          "placeholder": "SHA256:…",
+          "description": "填写管理员提供的网关主机密钥指纹。留空时首次连接由 DBX 提示核对。"
+        },
+        {
+          "key": "ak_web_terminal",
+          "label": "AccessKey 模式使用网页终端",
+          "type": "boolean",
+          "binding": "config",
+          "default": false,
+          "visible_when": {
+            "not": {
+              "field": "auth_method",
+              "one_of": [
+                "password"
+              ]
+            }
+          },
+          "description": "公网原生 SSH 网关不可达时，用同一 JumpServer 账号登录网页终端，API 仍用 AccessKey。"
+        },
+        {
+          "key": "ak_web_username",
+          "label": "网页终端登录账号",
+          "type": "text",
+          "binding": "config",
+          "visible_when": {
+            "all_of": [
+              {
+                "not": {
+                  "field": "auth_method",
+                  "one_of": [
+                    "password"
+                  ]
+                }
+              },
+              {
+                "field": "ak_web_terminal",
+                "one_of": [
+                  true
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "key": "ak_web_password",
+          "label": "网页终端登录密码",
+          "type": "password",
+          "binding": "secret",
+          "visible_when": {
+            "all_of": [
+              {
+                "not": {
+                  "field": "auth_method",
+                  "one_of": [
+                    "password"
+                  ]
+                }
+              },
+              {
+                "field": "ak_web_terminal",
+                "one_of": [
+                  true
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "key": "connect_timeout_secs",
+          "label": "连接超时（秒）",
+          "type": "number",
+          "binding": "config",
+          "default": 110,
+          "description": "等待 JumpServer 登录和图形验证码的响应时间。"
+        },
+        {
+          "key": "mcp_operations",
+          "label": "启用 SSH 和 SFTP 的 MCP 工具",
+          "type": "boolean",
+          "binding": "config",
+          "default": false,
+          "description": "允许 DBX 按各工具的读取、写入或完全访问权限授权此连接。"
+        }
       ],
-      "capabilities": ["test", "connect", "disconnect"],
+      "capabilities": [
+        "test",
+        "connect",
+        "disconnect"
+      ],
       "workbench": "io.github.misaka10091.jumpserver.workbench"
     },
-    { "type": "workbench", "id": "io.github.misaka10091.jumpserver.workbench", "label": "JumpServer 数据库凭证", "icon": "assets/plugin.svg" }
+    {
+      "type": "workbench",
+      "id": "io.github.misaka10091.jumpserver.workbench",
+      "label": "JumpServer 工作台",
+      "icon": "assets/plugin.svg"
+    },
+    {
+      "type": "mcp",
+      "id": "io.github.misaka10091.jumpserver.mcp",
+      "description": "查询 JumpServer 授权资产、巡检、执行 SSH 命令和传输文件。",
+      "ai_tools": true,
+      "external_tools": true,
+      "tools": {
+        "ssh_list_organizations": {
+          "access": "read",
+          "toolset": "inspection"
+        },
+        "ssh_list_assets": {
+          "access": "read",
+          "toolset": "inspection"
+        },
+        "ssh_list_accounts": {
+          "access": "read",
+          "toolset": "inspection"
+        },
+        "ssh_inspect": {
+          "access": "read",
+          "toolset": "inspection"
+        },
+        "ssh_exec": {
+          "toolset": "exec",
+          "access": "full"
+        },
+        "ssh_exec_sudo": {
+          "toolset": "exec",
+          "access": "full"
+        },
+        "ssh_multi_exec": {
+          "toolset": "exec",
+          "access": "full"
+        },
+        "ssh_terminal_input": {
+          "toolset": "exec",
+          "access": "full"
+        },
+        "ssh_run_bg": {
+          "toolset": "exec",
+          "access": "full"
+        },
+        "ssh_task_status": {
+          "toolset": "exec",
+          "access": "read"
+        },
+        "ssh_close": {
+          "toolset": "exec",
+          "access": "write"
+        },
+        "ssh_list_known_hosts": {
+          "toolset": "exec",
+          "access": "read"
+        },
+        "ssh_list_connections": {
+          "toolset": "exec",
+          "access": "read"
+        },
+        "ssh_remove_known_host": {
+          "toolset": "exec",
+          "access": "write"
+        },
+        "sftp_list_dir": {
+          "toolset": "sftp",
+          "access": "read"
+        },
+        "sftp_stat": {
+          "toolset": "sftp",
+          "access": "read"
+        },
+        "sftp_read_file": {
+          "toolset": "sftp",
+          "access": "read"
+        },
+        "sftp_upload": {
+          "toolset": "sftp",
+          "access": "write"
+        },
+        "sftp_download": {
+          "toolset": "sftp",
+          "access": "write"
+        },
+        "sftp_write_file": {
+          "toolset": "sftp",
+          "access": "write"
+        }
+      },
+      "toolsets": [
+        {
+          "id": "inspection",
+          "title": "JumpServer 巡检"
+        },
+        {
+          "id": "exec",
+          "title": "SSH 命令与终端"
+        },
+        {
+          "id": "sftp",
+          "title": "SFTP 文件"
+        }
+      ]
+    }
   ]
 }
