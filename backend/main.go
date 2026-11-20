@@ -13,7 +13,7 @@ import (
 )
 
 const pluginID = "io.github.misaka10091.jumpserver"
-const version = "0.1.0"
+const version = "0.1.1"
 
 type session struct {
 	client        *jmsClient
@@ -186,6 +186,9 @@ func (p *plugin) handle(ctx context.Context, method string, raw json.RawMessage)
 		}
 		return object{"items": items}, nil
 	case "jumpserver/fill", "jumpserver/credentials":
+		if method == "jumpserver/fill" && in.TargetID != "" {
+			return nil, errors.New("请通过 DBX 工作台预填已保存连接的编辑表单")
+		}
 		p.mu.Lock()
 		if p.refreshing[in.ConnectionID] {
 			p.mu.Unlock()
@@ -201,7 +204,7 @@ func (p *plugin) handle(ctx context.Context, method string, raw json.RawMessage)
 		if method == "jumpserver/credentials" {
 			return c, nil
 		}
-		link, err := connectionLink(*c, in.selection)
+		link, err := newConnectionLink(*c)
 		if err != nil {
 			return nil, err
 		}

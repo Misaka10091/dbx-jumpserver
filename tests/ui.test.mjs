@@ -23,14 +23,28 @@ async function settled(dom) {
   throw new Error('UI did not finish loading');
 }
 const remembered = { orgId: 'org-1', kind: 'application', resourceId: 'db-1', accountId: 'account-1', targetId: 'target-1', targetType: 'mysql', database: 'orders', updateEndpoint: false };
-async function mount({ store = new Map(), connectionId = 'service-1', resourceMissing = false, accountMissing = false, fail, holdFill } = {}) {
+async function mount({ store = new Map(), connectionId = 'service-1', resourceMissing = false, accountMissing = false,
+  fail, holdEdit, holdEditFields, connectionEditApi = true, editKeys = ['name', 'host', 'port', 'database', 'username', 'password'] } = {}) {
   const dom = new JSDOM(html, { runScripts: 'outside-only' });
   const calls = [];
   const bridge = {
     ready: Promise.resolve(), context: { connectionId },
-    capabilities: { storage: true, connectionsApi: true, clipboardWrite: true },
+    capabilities: { storage: true, connectionsApi: true, clipboardWrite: true, connectionEditApi },
     storage: { get: async (key) => store.get(key) ?? null, set: async (key, value) => { store.set(key, structuredClone(value)); } },
     getConnections: async () => [{ id: 'target-1', name: 'Saved MySQL', dbType: 'mysql' }, { id: 'pg', name: 'Postgres', dbType: 'postgres' }],
+    connections: {
+      async getEditFields(connectionId) {
+        calls.push({ method: 'host.getConnectionEditFields', params: { connectionId } });
+        if (holdEditFields) await holdEditFields;
+        return editKeys.map((key) => ({ key }));
+      },
+      async openEdit(params) {
+        calls.push({ method: 'host.openConnectionEdit', params: structuredClone(params) });
+        if (holdEdit) await holdEdit;
+        if (fail === 'host.openConnectionEdit') throw new Error('请先关闭当前连接编辑窗口');
+        return { opened: true };
+      },
+    },
     clipboard: { writeText: async () => {} },
     onContext(fn) { this.contextHandler = fn; },
     async invoke(method, params) {
@@ -39,8 +53,8 @@ async function mount({ store = new Map(), connectionId = 'service-1', resourceMi
       if (method === 'jumpserver/profile') return { username: 'alice', organizations: [{ id: 'org-1', name: '研发组织' }, { id: 'org-2', name: '其他组织' }], expireMinutes: 60 };
       if (method === 'jumpserver/resources') return { items: resourceMissing ? [] : [{ id: 'db-1', name: '<img src=x onerror=alert(1)>', protocol: 'mysql' }] };
       if (method === 'jumpserver/accounts') return { items: accountMissing ? [] : [{ id: 'account-1', name: 'Read only', username: 'readonly', protocol: 'mysql' }] };
-      if (method === 'jumpserver/fill') { if (holdFill) await holdFill; return { opened: true, expiresAt: '2030-01-01T00:00:00Z', message: '已请求打开 DBX 连接表单' }; }
-      if (method === 'jumpserver/credentials') return { host: 'proxy.test', port: 33061, username: 'token-id-for-test', password: 'temporary-password', database: 'orders', expiresAt: '2030-01-01T00:00:00Z' };
+      if (method === 'jumpserver/fill') return { opened: true, expiresAt: '2030-01-01T00:00:00Z', message: '已请求打开 DBX 连接表单' };
+      if (method === 'jumpserver/credentials') return { host: 'proxy.test', port: 33061, username: 'token-id-for-test', password: 'temporary-password', database: params.database, expiresAt: '2030-01-01T00:00:00Z' };
       throw new Error(`Unexpected method: ${method}`);
     },
   };
@@ -107,26 +121,35 @@ test('organization changes clear stale resource/account/target choices', async (
   assert.equal(profileStore(ui.store).profiles.find((profile) => profile.id === profileStore(ui.store).activeId).selection.resourceId, '');
 });
 
-test('fill rejects duplicate clicks and persists no temporary password', async (t) => {
+test('saved connection fill opens a single host draft and keeps credentials out of storage', async (t) => {
   let release; const gate = new Promise((resolve) => { release = resolve; });
-  const ui = await mount({ store: new Map([['binding:service-1', remembered]]), holdFill: gate }); t.after(() => ui.dom.window.close());
-  ui.$('fill').click(); ui.$('fill').click(); await turn();
-  assert.equal(ui.calls.filter((c) => c.method === 'jumpserver/fill').length, 1); assert.equal(ui.$('fill').disabled, true);
+  const ui = await mount({ store: new Map([['binding:service-1', remembered]]), holdEdit: gate }); t.after(() => ui.dom.window.close());
+  const initialCalls = ui.calls.length;
+  ui.$('fill').click(); ui.$('fill').click();
+  await waitFor(() => ui.calls.some((call) => call.method === 'host.openConnectionEdit'));
+  assert.deepEqual(ui.calls.slice(initialCalls).map((call) => call.method), [
+    'host.getConnectionEditFields', 'jumpserver/credentials', 'host.openConnectionEdit',
+  ]);
+  assert.deepEqual(ui.calls.at(-1).params, {
+    connectionId: 'target-1', fields: { username: 'token-id-for-test', password: 'temporary-password', database: 'orders' },
+  });
+  assert.equal(ui.$('fill').disabled, true);
   assert.equal(ui.$('fill').textContent, '正在填入…');
   assert.equal(ui.$('action-status').hidden, false);
-  assert.match(ui.$('action-status').textContent, /正在创建临时凭证/);
+  assert.match(ui.$('action-status').textContent, /正在准备临时凭证/);
   release(); await settled(ui.dom); assert.equal(ui.$('fill').disabled, false);
-  assert.match(ui.$('status').textContent, /已请求打开 DBX/);
-  assert.equal(JSON.stringify([...ui.store.values()]).includes('password'), false);
+  assert.match(ui.$('status').textContent, /请在 DBX 连接表单中检查并保存/);
+  assert.equal(JSON.stringify([...ui.store.values()]).includes('temporary-password'), false);
 });
 
-test('API errors are visible and allow retry', async (t) => {
-  const ui = await mount({ store: new Map([['binding:service-1', remembered]]), fail: 'jumpserver/fill' }); t.after(() => ui.dom.window.close());
+test('host editor rejection is visible and allows retry without a deep link', async (t) => {
+  const ui = await mount({ store: new Map([['binding:service-1', remembered]]), fail: 'host.openConnectionEdit' }); t.after(() => ui.dom.window.close());
   ui.$('fill').click(); await settled(ui.dom);
-  assert.equal(ui.$('status').dataset.tone, 'error'); assert.match(ui.$('status').textContent, /服务暂时不可用/); assert.equal(ui.$('fill').disabled, false);
+  assert.equal(ui.$('status').dataset.tone, 'error'); assert.equal(ui.$('fill').disabled, false);
   assert.equal(ui.$('action-status').hidden, false); assert.equal(ui.$('action-status').dataset.tone, 'error');
-  assert.match(ui.$('action-status').textContent, /服务暂时不可用/);
+  assert.match(ui.$('action-status').textContent, /请先关闭当前连接编辑窗口/);
   assert.equal(ui.$('fill').textContent, '刷新并填入 DBX');
+  assert.equal(ui.calls.some((call) => call.method === 'jumpserver/fill'), false);
 });
 
 test('fill uses click without relying on a native submit event', async (t) => {
@@ -136,7 +159,7 @@ test('fill uses click without relying on a native submit event', async (t) => {
   ui.$('form').addEventListener('submit', () => { submitEvents++; });
   ui.$('fill').click(); await settled(ui.dom);
   assert.equal(submitEvents, 0);
-  assert.equal(ui.calls.filter((call) => call.method === 'jumpserver/fill').length, 1);
+  assert.equal(ui.calls.filter((call) => call.method === 'host.openConnectionEdit').length, 1);
   assert.equal(ui.$('action-status').dataset.tone, 'success');
 });
 
@@ -160,13 +183,38 @@ test('new connections fill without manual gateway configuration', async (t) => {
   assert.equal(ui.calls.find((call) => call.method === 'jumpserver/fill').params.targetId, '');
 });
 
-test('restores the automatic endpoint update choice along with the target', async (t) => {
-  const ui = await mount({ store: new Map([['binding:service-1', { ...remembered, updateEndpoint: true }]]) }); t.after(() => ui.dom.window.close());
+test('restores the endpoint update choice and omits a blank database from the draft', async (t) => {
+  const ui = await mount({ store: new Map([['binding:service-1', { ...remembered, database: '', updateEndpoint: true }]]) }); t.after(() => ui.dom.window.close());
   assert.equal(ui.$('update-endpoint').checked, true);
   assert.equal(ui.$('update-endpoint-row').hidden, false);
   assert.match(ui.$('target-hint').textContent, /smart/);
   ui.$('fill').click(); await settled(ui.dom);
-  assert.equal(ui.calls.find((call) => call.method === 'jumpserver/fill').params.updateEndpoint, true);
+  assert.deepEqual(ui.calls.find((call) => call.method === 'host.openConnectionEdit').params.fields, {
+    username: 'token-id-for-test', password: 'temporary-password', host: 'proxy.test', port: 33061,
+  });
+});
+
+test('unavailable draft fields stop the fill before a token is minted', async (t) => {
+  const ui = await mount({ store: new Map([['binding:service-1', { ...remembered, updateEndpoint: true }]]),
+    editKeys: ['username', 'password', 'database', 'host'] }); t.after(() => ui.dom.window.close());
+  ui.$('fill').click(); await settled(ui.dom);
+  assert.equal(ui.calls.at(-1).method, 'host.getConnectionEditFields');
+  assert.equal(ui.$('action-status').dataset.tone, 'error');
+  assert.match(ui.$('action-status').textContent, /不支持预填所选字段/);
+});
+
+test('a host without edit capability preserves a saved target for manual fill', async (t) => {
+  const ui = await mount({ store: new Map([['binding:service-1', remembered]]), connectionEditApi: false }); t.after(() => ui.dom.window.close());
+  assert.equal(ui.$('target').value, 'target-1');
+  assert.equal(ui.$('fill').disabled, true);
+  assert.equal(ui.$('preview').disabled, false);
+  assert.match(ui.$('target-hint').textContent, /使用“获取参数”/);
+  const initialCalls = ui.calls.length;
+  ui.$('fill').click();
+  assert.equal(ui.calls.length, initialCalls);
+  ui.$('preview').click(); await settled(ui.dom);
+  assert.equal(ui.calls.at(-1).method, 'jumpserver/credentials');
+  assert.equal(ui.$('preview-panel').hidden, false);
 });
 
 test('one JumpServer keeps multiple independent named profiles', async (t) => {
@@ -193,7 +241,7 @@ test('one JumpServer keeps multiple independent named profiles', async (t) => {
   await selectProfile(ui, '生产订单');
   assert.equal(ui.$('target').value, 'target-1');
   assert.equal(ui.$('database').value, 'orders');
-  assert.equal(ui.calls.filter((call) => call.method === 'jumpserver/fill').length, 0, 'switching profiles must not mint tokens');
+  assert.equal(ui.calls.some(({ method }) => ['jumpserver/credentials', 'jumpserver/fill'].includes(method)), false, 'switching profiles must not mint tokens');
 
   await selectProfile(ui, '测试库');
   assert.equal(ui.$('target').value, '');
@@ -271,8 +319,14 @@ test('missing authorization in a saved profile is reported without being reused'
   assert.match(ui.$('status').textContent, /原系统账号已不可用/);
 });
 
-test('context changes invalidate the loaded service and disable fill', async (t) => {
-  const ui = await mount({ store: new Map([['binding:service-1', remembered]]) }); t.after(() => ui.dom.window.close());
+test('context changes during field discovery stop the saved connection fill', async (t) => {
+  let releaseFields;
+  const holdEditFields = new Promise((resolve) => { releaseFields = resolve; });
+  const ui = await mount({ store: new Map([['binding:service-1', remembered]]), holdEditFields }); t.after(() => ui.dom.window.close());
+  ui.$('fill').click();
+  await waitFor(() => ui.calls.at(-1).method === 'host.getConnectionEditFields');
   ui.bridge.context = { connectionId: 'service-2' }; ui.bridge.contextHandler();
+  releaseFields(); await settled(ui.dom);
+  assert.equal(ui.calls.at(-1).method, 'host.getConnectionEditFields');
   assert.equal(ui.$('fill').disabled, true); assert.match(ui.$('status').textContent, /上下文已更改/);
 });

@@ -3,12 +3,12 @@
   "manifest_version": 1,
   "id": "io.github.misaka10091.jumpserver",
   "name": "JumpServer",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "dbx-jumpserver",
   "description": "获取 JumpServer 临时连接凭证，一键填入 DBX 数据库连接表单。",
   "icon": "assets/plugin.svg",
-  "engines": { "host_api": "1" },
-  "permissions": ["host.storage", "host.connections:read"],
+  "engines": { "host_api": "^1.5" },
+  "permissions": ["host.storage", "host.connections:read", "host.connections:edit"],
   "entrypoints": {
     "backend": { "executable": "bin/dbx-jumpserver", "transport": "stdio-jsonl", "protocol_versions": [1] },
     "ui": { "root": "ui", "entry": "ui/index.html" }

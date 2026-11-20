@@ -206,40 +206,25 @@ func TestProtocolMismatchDoesNotMintToken(t *testing.T) {
 	}
 }
 
-func TestExistingConnectionLinkOnlyPatchesExplicitFields(t *testing.T) {
+func TestNewConnectionLinkEncodesFields(t *testing.T) {
 	c := credentials{Host: "proxy.test", Port: 33061, Username: "token id +&", Password: " secret+&= ", Type: "mysql", Name: "Orders"}
-	link, err := connectionLink(c, selection{TargetID: "saved-id"})
+	link, err := newConnectionLink(c)
 	if err != nil {
 		t.Fatal(err)
 	}
-	u, _ := url.Parse(link)
-	q := u.Query()
-	if u.Scheme != "dbx" || u.Host != "connection" || u.Path != "/new" || q.Get("id") != "saved-id" {
-		t.Fatal("incorrect update link")
+	u, err := url.Parse(link)
+	if err != nil {
+		t.Fatal(err)
 	}
-	for _, key := range []string{"host", "port", "database", "name", "ssl", "type", "url_params"} {
-		if q.Has(key) {
-			t.Fatalf("unexpected patch to %s", key)
-		}
+	q := u.Query()
+	if u.Scheme != "dbx" || u.Host != "connection" || u.Path != "/new" || q.Has("id") {
+		t.Fatal("new-connection link invalid")
+	}
+	if q.Get("type") != c.Type || q.Get("host") != c.Host || q.Get("port") != "33061" || q.Get("name") != "Orders · JumpServer" || q.Has("database") {
+		t.Fatal("new-connection fields were not encoded correctly")
 	}
 	if q.Get("password") != c.Password || q.Get("user") != c.Username {
 		t.Fatal("credentials were trimmed or incorrectly encoded")
-	}
-	link, err = connectionLink(c, selection{TargetID: "saved-id", UpdateEndpoint: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	u, _ = url.Parse(link)
-	if u.Query().Get("host") != "proxy.test" {
-		t.Fatal("requested endpoint update omitted")
-	}
-	link, err = connectionLink(c, selection{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	u, _ = url.Parse(link)
-	if u.Query().Get("type") != "mysql" || u.Query().Has("id") {
-		t.Fatal("new-connection link invalid")
 	}
 }
 
@@ -291,7 +276,14 @@ func TestFillOpensOnlyGeneratedLocalDBXURL(t *testing.T) {
 	p.open = func(link string) error { opened = link; return nil }
 	in := validSelection()
 	in.ConnectionID = "profile"
+	in.TargetID = "saved-id"
+	in.TargetType = "mysql"
 	raw, _ := json.Marshal(in)
+	if _, err := p.handle(context.Background(), "jumpserver/fill", raw); err == nil || opened != "" || len(*bodies) != 0 {
+		t.Fatal("existing connection must use the host editor")
+	}
+	in.TargetID = ""
+	raw, _ = json.Marshal(in)
 	result, err := p.handle(context.Background(), "jumpserver/fill", raw)
 	if err != nil {
 		t.Fatal(err)

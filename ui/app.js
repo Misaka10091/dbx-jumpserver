@@ -25,9 +25,10 @@
   }
   function clearPreview() { state.preview = null; $('preview-values').replaceChildren(); $('preview-panel').hidden = true; }
   function readyToFill() { return !!(state.connectionId && $('org').value && $('resource').value && $('account').value); }
+  function canFill() { return readyToFill() && (!$('target').value || bridge.capabilities?.connectionEditApi); }
   function updateButtons() {
     const hasService = !!state.service;
-    $('fill').disabled = state.busy || !readyToFill();
+    $('fill').disabled = state.busy || !canFill();
     $('preview').disabled = state.busy || !readyToFill();
     $('fill').textContent = state.busy && state.action === 'fill' ? '正在填入…' : '刷新并填入 DBX';
     $('preview').textContent = state.busy && state.action === 'preview' ? '正在获取…' : '获取参数';
@@ -167,12 +168,16 @@
   }
   function targetHint() {
     const existing = !!$('target').value;
-    $('update-endpoint-row').hidden = !existing;
-    $('target-hint').textContent = existing
-      ? $('update-endpoint').checked
-        ? '连接地址从 JumpServer smart 接口自动获取，并更新临时用户名和密码。'
-        : '仅刷新临时用户名和密码。保留目标连接现有地址；数据库名留空时也保留原值。'
-      : '将从 JumpServer smart 接口自动获取主机和端口，填入 DBX 新建连接表单。';
+    const canEdit = bridge.capabilities?.connectionEditApi;
+    $('update-endpoint-row').hidden = !existing || !canEdit;
+    if (!existing) {
+      $('target-hint').textContent = '将从 JumpServer smart 接口自动获取主机和端口，填入 DBX 新建连接表单。';
+    } else if (!canEdit) {
+      $('target-hint').textContent = '当前工作台不支持预填已保存连接，请使用“获取参数”手动填入。';
+    } else {
+      const endpoint = $('update-endpoint').checked ? '同时填入从 JumpServer smart 接口获取的主机和端口。' : '';
+      $('target-hint').textContent = `将在 DBX 编辑表单中填入临时用户名和密码。${endpoint}数据库名留空时沿用原值。`;
+    }
     $('lifetime').textContent = `令牌有效期 ${state.service?.expireMinutes || 60} 分钟 · 连接地址自动发现`;
     updateButtons();
   }
@@ -260,7 +265,7 @@
     if (!service.organizations.length) status('用户信息没有返回组织列表，请检查 JumpServer 版本和组织权限。', 'error');
     else if (warnings.length) status(`已恢复配置「${active.name}」，但${warnings.join('、')}，请重新选择后保存。`, 'error');
     else if (state.migrated) status(`已将原来的单条选择迁移为配置「${active.name}」。`);
-    else if (readyToFill()) status(`已恢复配置「${active.name}」，可直接刷新并填入 DBX。`);
+    else if (readyToFill()) status(`已恢复配置「${active.name}」，${canFill() ? '可直接刷新并填入 DBX' : '可获取参数后手动填入'}。`);
     else status(`当前配置「${active.name}」尚未完成选择。可先选择组织和数据库，或用“另存为配置”保存多个组合。`);
   }
   function openProfileDialog(mode) {
@@ -411,13 +416,39 @@
   // blocked before the submit event, so run this action directly from click.
   $('form').addEventListener('submit', (event) => event.preventDefault());
   $('fill').addEventListener('click', () => {
-    if (!readyToFill()) return;
+    if (!canFill()) return;
+    const epoch = state.epoch;
+    const current = selection();
     run(async () => {
       clearPreview(); await saveSelection();
-      const result = await invoke('jumpserver/fill', selection());
-      if (!result?.opened) throw new Error('未能请求打开 DBX 连接表单，请重试或使用“获取参数”。');
-      status(`${result.message}。令牌到期：${new Date(result.expiresAt).toLocaleString()}。`, 'success');
-    }, '正在创建临时凭证并打开 DBX 连接表单…', 'fill');
+      if (epoch !== state.epoch) return;
+      let expiresAt;
+      let message;
+      if (current.targetId) {
+        const keys = ['username', 'password'];
+        if (current.updateEndpoint) keys.push('host', 'port');
+        if (current.database) keys.push('database');
+        const editable = await bridge.connections.getEditFields(current.targetId);
+        if (epoch !== state.epoch) return;
+        if (!keys.every((key) => editable.some((field) => field.key === key))) {
+          throw new Error('该 DBX 连接不支持预填所选字段，请检查连接模式，或使用“获取参数”手动填入。');
+        }
+        const credentials = await invoke('jumpserver/credentials', current);
+        const fields = Object.fromEntries(keys.map((key) => [key, credentials[key]]));
+        const result = await bridge.connections.openEdit({ connectionId: current.targetId, fields });
+        if (!result?.opened) throw new Error('未能打开 DBX 连接编辑表单，请重试或使用“获取参数”。');
+        expiresAt = credentials.expiresAt;
+        message = '请在 DBX 连接表单中检查并保存';
+      } else {
+        const result = await invoke('jumpserver/fill', current);
+        if (!result?.opened) throw new Error('未能请求打开 DBX 新建连接表单，请重试或使用“获取参数”。');
+        expiresAt = result.expiresAt;
+        message = result.message;
+      }
+      if (epoch === state.epoch) {
+        status(`${message}。令牌到期：${new Date(expiresAt).toLocaleString()}。`, 'success');
+      }
+    }, '正在准备临时凭证并打开 DBX 连接表单…', 'fill');
   });
   $('preview').addEventListener('click', () => run(async () => {
     clearPreview(); await saveSelection(); const value = await invoke('jumpserver/credentials', selection());

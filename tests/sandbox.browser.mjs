@@ -32,7 +32,20 @@ const stub = `
   window.fillCalls = 0;
   window.dbxPlugin = {
     ready: Promise.resolve(), context: { connectionId: 'test-service' },
-    capabilities: { storage: true, connectionsApi: true },
+    capabilities: { storage: true, connectionsApi: true, connectionEditApi: true },
+    connections: {
+      async getEditFields(connectionId) {
+        if (connectionId !== 'target-1') throw new Error('Wrong edit target');
+        return [{ key: 'username' }, { key: 'password' }];
+      },
+      async openEdit({ connectionId, fields }) {
+        if (connectionId !== 'target-1' || Object.keys(fields).length !== 2 || fields.username !== 'test-token' || fields.password !== 'test-secret') {
+          throw new Error('Wrong edit draft');
+        }
+        window.fillCalls++;
+        return { opened: true };
+      },
+    },
     storage: {
       async get() { return { orgId: 'org-1', kind: 'application', resourceId: 'db-1', accountId: 'account-1', targetId: 'target-1', database: '', updateEndpoint: false }; },
       async set() {},
@@ -43,7 +56,7 @@ const stub = `
       if (method === 'jumpserver/profile') return { username: 'test-user', organizations: [{ id: 'org-1', name: 'Test organization' }], expireMinutes: 60 };
       if (method === 'jumpserver/resources') return { items: [{ id: 'db-1', name: 'Test database', protocol: 'mysql' }] };
       if (method === 'jumpserver/accounts') return { items: [{ id: 'account-1', name: 'Test account', protocol: 'mysql' }] };
-      if (method === 'jumpserver/fill') { window.fillCalls++; return { opened: true, expiresAt: '2030-01-01T00:00:00Z', message: 'DBX test request accepted' }; }
+      if (method === 'jumpserver/credentials') return { username: 'test-token', password: 'test-secret', expiresAt: '2030-01-01T00:00:00Z' };
       throw new Error('Unexpected test method');
     },
   };
@@ -106,5 +119,5 @@ assert.equal(results.fixed.submitEvents, 0);
 assert.equal(results.fixed.immediateFeedback, true);
 assert.equal(results.fixed.feedbackVisible, true);
 assert.equal(results.fixed.feedbackTone, 'success');
-assert.match(results.fixed.feedbackText, /DBX test request accepted/);
-console.log('PASS: real browser blocks legacy submit; fixed click invokes fill once and displays progress and success inside sandbox="allow-scripts".');
+assert.match(results.fixed.feedbackText, /请在 DBX 连接表单中检查并保存/);
+console.log('PASS: click opens one host draft and shows progress and success in an allow-scripts sandbox.');

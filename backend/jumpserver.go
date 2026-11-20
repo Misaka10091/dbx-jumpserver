@@ -272,15 +272,14 @@ type credentials struct {
 }
 
 type selection struct {
-	ConnectionID   string `json:"connectionId"`
-	OrgID          string `json:"orgId"`
-	Kind           string `json:"kind"`
-	ResourceID     string `json:"resourceId"`
-	AccountID      string `json:"accountId"`
-	TargetID       string `json:"targetId"`
-	TargetType     string `json:"targetType"`
-	Database       string `json:"database"`
-	UpdateEndpoint bool   `json:"updateEndpoint"`
+	ConnectionID string `json:"connectionId"`
+	OrgID        string `json:"orgId"`
+	Kind         string `json:"kind"`
+	ResourceID   string `json:"resourceId"`
+	AccountID    string `json:"accountId"`
+	TargetID     string `json:"targetId"`
+	TargetType   string `json:"targetType"`
+	Database     string `json:"database"`
 }
 
 func (s *session) mint(ctx context.Context, in selection) (*credentials, error) {
@@ -437,29 +436,19 @@ func (c *jmsClient) databaseEndpoint(ctx context.Context, org, kind, resourceID,
 	return host, port, nil
 }
 
-func connectionLink(c credentials, in selection) (string, error) {
-	if in.TargetID == "" || in.UpdateEndpoint {
-		if err := validateDiscoveredEndpoint(c.Host, c.Port); err != nil {
-			return "", err
-		}
+func newConnectionLink(c credentials) (string, error) {
+	if err := validateDiscoveredEndpoint(c.Host, c.Port); err != nil {
+		return "", err
 	}
-	q := url.Values{"v": {"1"}, "user": {c.Username}, "password": {c.Password}}
-	if in.TargetID != "" {
-		if len(in.TargetID) > 128 || strings.ContainsAny(in.TargetID, "\r\n\x00") {
-			return "", errors.New("目标连接 ID 无效")
-		}
-		q.Set("id", in.TargetID)
-		if in.UpdateEndpoint {
-			q.Set("host", c.Host)
-			q.Set("port", strconv.Itoa(c.Port))
-		}
-	} else {
-		q.Set("type", c.Type)
-		q.Set("host", c.Host)
-		q.Set("port", strconv.Itoa(c.Port))
-		q.Set("name", c.Name+" · JumpServer")
+	q := url.Values{
+		"v":        {"1"},
+		"user":     {c.Username},
+		"password": {c.Password},
+		"type":     {c.Type},
+		"host":     {c.Host},
+		"port":     {strconv.Itoa(c.Port)},
+		"name":     {c.Name + " · JumpServer"},
 	}
-	// An empty database must preserve an existing connection's database setting.
 	if c.Database != "" {
 		q.Set("database", c.Database)
 	}

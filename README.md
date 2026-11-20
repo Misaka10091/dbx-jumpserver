@@ -2,12 +2,12 @@
 
 在 DBX 中获取 JumpServer 数据库临时凭证，并填入 DBX 数据库连接表单的插件。适合经常需要在多个 JumpServer 数据库之间切换、又不想反复复制临时用户名和密码的场景。
 
-> **状态：`0.1.0` 候选版，尚未发布到 DBX 商店。** 当前产物是未签名候选包，正式安装需要经过 DBX Store 或私有插件仓库的签名流程。
+> **状态：`0.1.1` 候选版，尚未发布到 DBX 商店。** 当前产物是未签名候选包，正式安装需要经过 DBX Store 或私有插件仓库的签名流程。
 
 ## 功能
 
 - **多凭证配置**：一个 JumpServer 连接可以保存多组具名配置，分别记录组织、应用/资产、数据库、系统账号和目标 DBX 连接；支持另存、切换、重命名和删除，并恢复最后使用的配置。
-- **一键刷新并填入**：获取新的 `connection-token` 后，通过本机 `dbx://` 链接打开已填好的 DBX 连接表单。现有连接默认只更新用户名和密码，也可选择同时更新连接地址。
+- **一键刷新并填入**：获取新的 `connection-token` 后，使用 DBX Host API 预填已保存连接的编辑表单。默认填入临时用户名和密码，填写数据库名或勾选更新地址后也会填入相应字段。新建连接通过本机 `dbx://` 链接打开表单。
 - **自动发现连接地址**：通过 JumpServer `terminal/endpoints/smart/` 读取 `host` 和 `magnus_listen_db_port`，不需要手动填写数据库代理主机或端口。
 - **支持数据库**：MySQL / MariaDB、PostgreSQL、SQL Server。MariaDB 映射为 DBX 的 MySQL 连接。
 - **凭证不落地到配置**：AccessKey 和 AccessKey Secret 保存在 DBX Secret Store；临时密码不会写入工作台配置存储。
@@ -32,8 +32,8 @@ pnpm run package
 当前生成的 Windows x64 候选包：
 
 ```text
-dist/io.github.misaka10091.jumpserver-0.1.0-windows-x64.dbxp
-dist/io.github.misaka10091.jumpserver-0.1.0-windows-x64.artifact.json
+dist/io.github.misaka10091.jumpserver-0.1.1-windows-x64.dbxp
+dist/io.github.misaka10091.jumpserver-0.1.1-windows-x64.artifact.json
 ```
 
 这是官方插件 CLI 生成的**未签名**候选包。正式 DBX 会校验安装包签名，不能直接当作商店已签名插件安装。macOS / Linux 需要在对应平台重新打包。
@@ -43,8 +43,8 @@ dist/io.github.misaka10091.jumpserver-0.1.0-windows-x64.artifact.json
 推送与 `manifest.json` 版本一致的 tag 即会触发 `.github/workflows/plugin-release.yml`：
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.1.1
+git push origin v0.1.1
 ```
 
 工作流会先创建 GitHub Release，再调用 DBX 官方 reusable workflow 构建并上传：
@@ -100,7 +100,7 @@ DBX 工作台
   → 读取组织、应用/资产、系统账号
   → terminal/endpoints/smart/ 获取 host + magnus_listen_db_port
   → 创建 connection-token
-  → 本机 dbx://connection/new 打开 DBX 连接表单
+  → 已保存连接通过 Host API 打开编辑草稿，新建连接通过本机 dbx://connection/new 打开表单
   → 用户检查并保存
 ```
 
@@ -108,17 +108,17 @@ DBX 工作台
 
 ### 关于 DBX 插件 API
 
-DBX 的 `connection/action` 可以通过 `fieldValues` 更新插件自己声明的连接表单；`host.connections:read` 只提供已配置连接的脱敏摘要，目前没有修改现有内置数据库连接的 Host API。因此本插件通过本机 `dbx://connection/new?id=...` 打开 DBX 的连接编辑表单，由 DBX 完成实际保存。`window.dbxPlugin.openUrl` 只接受 HTTP / HTTPS，不能用于打开 `dbx://`。
+插件通过 `host.connections:read` 列出已保存连接的脱敏摘要。桌面主窗口提供 `connectionEditApi` 时，插件用 `connections.getEditFields()` 检查目标支持预填的字段，再用 `connections.openEdit()` 打开编辑草稿。两者都需要 `host.connections:edit` 权限。DBX 在用户确认后保存，关闭表单会丢弃草稿。
 
 DBX 工作台使用 `sandbox="allow-scripts"`，不放开原生表单提交，所以刷新按钮使用直接 `click` 处理，不依赖 `submit` 事件。
 
 ## 兼容与限制
 
-- DBX 需要支持 `host.storage`、`host.connections:read` 和 `dbx://connection/new` 现有连接编辑。
+- 插件声明 Host API 1.5。DBX 桌面版 v0.6.72 起，主窗口工作台可以预填已保存连接的编辑草稿。
 - JumpServer 需要提供可用的数据库代理及 `terminal/endpoints/smart/` 接口。
 - 当前适配 JumpServer v2 兼容接口的 `system_user` / `application` / `asset` 模型；仅提供 `account` 模型的新版本需要单独适配。
-- 自动填入要求 Sidecar 与 DBX 桌面版运行在同一台电脑。Web / Docker 部署请使用 **获取参数** 后手动复制。
-- 深链更新支持 DBX 内置 MySQL、PostgreSQL 和 SQL Server 的字段模式连接；特殊驱动或连接字符串模式可能被 DBX 拒绝。
+- 自动预填新建连接需要 Sidecar 和 DBX 桌面版运行在同一台电脑。Web / Docker 部署可用 **获取参数** 手动填入。
+- 预填支持 DBX 内置 MySQL、PostgreSQL 和 SQL Server 的字段模式连接。可用字段由 DBX 根据目标连接判断。
 - 尚未使用真实 JumpServer 凭据做完整端到端验证，也未在已签名安装的 DBX 客户端中完成最终验证。
 
 ## 安全说明
@@ -126,7 +126,7 @@ DBX 工作台使用 `sandbox="allow-scripts"`，不放开原生表单提交，�
 - AccessKey ID / Secret 由 DBX Secret Store 管理，Sidecar 仅在连接期间保留必要凭据。
 - 工作台配置存储只包含配置名称、组织/资源/账号/目标 ID、数据库名和更新地址开关；不保存密码或令牌。
 - JumpServer API 使用 HTTPS 证书校验，HTTP 跳转不会携带签名凭据继续请求。
-- “刷新并填入 DBX”生成的链接包含临时用户名和密码，不要转发或截图分享。
+- 已保存连接的临时凭证通过宿主桥直接传入编辑草稿。新建连接使用的 `dbx://` 链接包含临时凭证。
 - “获取参数”仅在当前工作台内显示临时凭证，可点击“清除显示”；复制密码会写入系统剪贴板。
 
 ## 常见问题
@@ -137,13 +137,13 @@ DBX 工作台使用 `sandbox="allow-scripts"`，不放开原生表单提交，�
 | 资源列表为空 | 切换实际组织；确认数据库在“我的应用”还是普通资产中，并检查该用户授权。 |
 | 系统账号为空 | 检查账号授权，以及账号协议是否为 MySQL / MariaDB / PostgreSQL / SQL Server。 |
 | 凭证服务未连接 | 先在 DBX 连接树连接“JumpServer 凭证服务”，再打开或重新加载工作台。 |
-| 已创建令牌但没有打开 DBX | 检查本机是否注册了 `dbx://` 协议处理器；也可使用“获取参数”手动填入。 |
-| DBX 提示先关闭连接窗口 | 关闭当前连接编辑窗口后回到插件重试，深链不会覆盖未保存草稿。 |
+| 新建连接表单没有打开 | 检查本机是否注册了 `dbx://` 协议处理器。也可使用“获取参数”手动填入。 |
+| DBX 提示先关闭连接窗口 | 处理完当前编辑表单，再回到插件重试。 |
 | smart 接口没有返回地址或端口 | 检查 JumpServer 数据库代理、应用路由和协议；插件使用 `magnus_listen_db_port`，不会使用 HTTP / SSH 端口。 |
 | 提示令牌已过期或时间格式不支持 | 两种错误会分别提示。先检查系统时间，再确认响应时间是否带时区；支持 ISO 8601 和 JumpServer v2 的 `YYYY/MM/DD HH:mm:ss +0800`。 |
 | 令牌生成但数据库登录失败 | 核对自动发现的代理地址、协议、令牌有效期和部署的数据库代理认证方式。用户名应为令牌原始 `id`，密码为对应 `secret`。 |
 | 提示数据库类型不匹配 | 目标 DBX 连接的数据库类型必须与 JumpServer 系统账号协议一致。 |
-| 更新连接被 DBX 拒绝 | 检查 DBX 版本是否支持现有连接深链更新，以及目标是否为内置字段模式连接。 |
+| 已保存连接的字段无法预填 | 检查是否在支持 Host API 1.5 的 DBX 桌面主窗口，以及目标是否为字段模式连接。也可使用“获取参数”手动填入。 |
 | 点击按钮无反应 | 使用当前 0.1.x 版本并重新打开工作台。旧版依赖原生表单提交，会被 DBX 沙箱拦截。 |
 
 ## 项目结构
